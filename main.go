@@ -69,6 +69,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch strings.ToLower(msg.String()) {
+		case "q":
+			return m, nil
 		case "i":
 			tlog("pressed i")
 			m.insertMode = true
@@ -107,7 +109,7 @@ func (m *model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch strings.ToLower(msg.String()) {
-		case "enter":
+		case "enter", "down", "up":
 			_, cmd := m.sl.Update(msg)
 			return m, cmd
 		case "esc":
