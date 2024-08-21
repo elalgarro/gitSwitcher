@@ -107,11 +107,14 @@ func (m *model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch strings.ToLower(msg.String()) {
+		case "enter":
+			_, cmd := m.sl.Update(msg)
+			return m, cmd
 		case "esc":
 			m.insertMode = false
 			m.ti.Blur()
 			return m, nil
-		case "q", "ctrl+c":
+		case "ctrl+c":
 			m.insertMode = false
 			return m, tea.Quit
 		default:
