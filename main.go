@@ -16,6 +16,7 @@ import (
 )
 
 type model struct {
+	curr           GitBranch
 	insertMode     bool
 	unfilteredData []GitBranch
 	ti             textinput.Model
@@ -134,6 +135,7 @@ func (m *model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	var b strings.Builder
+	b.WriteString(fmt.Sprintf(" on branch %s \n", m.curr.Name))
 	b.WriteString(m.ti.View())
 	b.WriteString("\n")
 	b.WriteString(m.sl.View())
@@ -189,6 +191,7 @@ func main() {
 	}
 	ti := textinput.New()
 	m := &model{
+		curr:           data.current,
 		insertMode:     false,
 		unfilteredData: data.branches,
 		ti:             ti,
@@ -201,7 +204,7 @@ func main() {
 	}
 	if !m.sl.Canceled() {
 		branch := m.sl.Selected().(GitBranch)
-		fmt.Printf("switching to branch '%s'", branch.Name)
+		exec.Command("git", "stash").Run()
 		cmd := exec.Command("git", "switch", branch.Name)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
