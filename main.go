@@ -7,19 +7,50 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/mritd/bubbles/common"
 
 	"github.com/mritd/bubbles/selector"
 )
 
 type model struct {
-	sl selector.Model
+	insertMode     bool
+	unfilteredData []GitBranch
+	ti             textinput.Model
+	sl             selector.Model
 }
 
 func (m model) Init() tea.Cmd {
 	return nil
 }
+
+func fakeKeyMsg(kt tea.KeyType, r rune) tea.KeyMsg {
+	return tea.KeyMsg{
+		Type:  kt,
+		Runes: []rune{r},
+		Alt:   false,
+		Paste: false,
+	}
+}
+
+const shouldlog = false
+
+func tlog(str string) {
+	if !shouldlog {
+		return
+	}
+	f, err := tea.LogToFile("debug.log", "debug")
+	if err != nil {
+		fmt.Println("fatal:", err)
+		os.Exit(1)
+	}
+	f.WriteString(str)
+	f.WriteString("\n")
+	defer f.Close()
+}
+
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// By default, the prompt component will not return a "tea.Quit"
 	// message unless Ctrl+C is pressed.
@@ -31,12 +62,77 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
+	if m.insertMode {
+		return m.handleInsertMode(msg)
+	}
+	tlog("in Update")
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch strings.ToLower(msg.String()) {
+		case "i":
+			tlog("pressed i")
+			m.insertMode = true
+			m.ti.Focus()
+			return m, nil
+		case "j":
+			fm := fakeKeyMsg(tea.KeyDown, 'j')
+			_, cmd := m.sl.Update(fm)
+			return m, cmd
+		case "k":
+			fm := fakeKeyMsg(tea.KeyUp, 'k')
+			_, cmd := m.sl.Update(fm)
+			return m, cmd
+		}
+	}
 	_, cmd := m.sl.Update(msg)
 	return m, cmd
 }
 
+func (m *model) updateData() selector.Model {
+	// make a new slice of strings
+	data := make([]interface{}, 0)
+	// filter the git branches based on filter
+	for _, branch := range m.unfilteredData {
+		if fuzzy.Match(m.ti.Value(), branch.Name) {
+			data = append(data, branch)
+			tlog(fmt.Sprintf("it's a match! %s - %s", m.ti.Value(), branch.Name))
+		}
+	}
+	// set selector data to new slice.
+
+	return newSelector(data)
+}
+
+func (m *model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch strings.ToLower(msg.String()) {
+		case "esc":
+			m.insertMode = false
+			m.ti.Blur()
+			return m, nil
+		case "q", "ctrl+c":
+			m.insertMode = false
+			return m, tea.Quit
+		default:
+
+			ti, cmd := m.ti.Update(msg)
+			m.ti = ti
+			sl := m.updateData()
+			m.sl = sl
+			_, slcmd := m.sl.Update(msg)
+			return m, tea.Batch(cmd, slcmd)
+		}
+	}
+	return m, nil
+}
+
 func (m model) View() string {
-	return m.sl.View()
+	var b strings.Builder
+	b.WriteString(m.ti.View())
+	b.WriteString("\n")
+	b.WriteString(m.sl.View())
+	return b.String()
 }
 
 type GitBranch struct {
@@ -48,6 +144,27 @@ func sanityCheck() (inRepo bool) {
 	//above command errors if we are not in a git repo.
 	return err == nil
 }
+func newSelector(data []interface{}) selector.Model {
+	return selector.Model{
+		Data: data,
+		// PerPage:    5,
+		HeaderFunc: func(m selector.Model, obj interface{}, gdIndex int) string { return "" },
+		SelectedFunc: func(m selector.Model, obj interface{}, gdIndex int) string {
+			t := obj.(GitBranch)
+			return common.FontColor(fmt.Sprintf("[%d] %s", gdIndex+1, t.Name), selector.ColorSelected)
+		},
+		UnSelectedFunc: func(m selector.Model, obj interface{}, gdIndex int) string {
+			t := obj.(GitBranch)
+			return common.FontColor(fmt.Sprintf(" %d. %s", gdIndex+1, t.Name), selector.ColorUnSelected)
+		},
+		FinishedFunc: func(s interface{}) string {
+			return s.(GitBranch).Name + "\n"
+		},
+		FooterFunc: func(m selector.Model, obj interface{}, gdIndex int) string {
+			t := m.Selected().(GitBranch)
+			return common.FontColor(fmt.Sprint(t.Name), selector.ColorFooter)
+		}}
+}
 
 func main() {
 	if !sanityCheck() {
@@ -55,11 +172,7 @@ func main() {
 		os.Exit(1)
 		return
 	}
-	for _, arg := range os.Args {
-		fmt.Println(arg)
-	}
 	branches, err := gatherBranches()
-
 	if err != nil {
 		os.Stderr.Write([]byte(err.Error()))
 		os.Exit(1)
@@ -69,27 +182,12 @@ func main() {
 	for _, v := range data.branches {
 		generic = append(generic, v)
 	}
+	ti := textinput.New()
 	m := &model{
-		sl: selector.Model{
-			Data:       generic,
-			PerPage:    5,
-			HeaderFunc: selector.DefaultHeaderFuncWithAppend(fmt.Sprintf("Current Branch: %s >", data.current.Name)),
-			SelectedFunc: func(m selector.Model, obj interface{}, gdIndex int) string {
-				t := obj.(GitBranch)
-				return common.FontColor(fmt.Sprintf("[%d] %s", gdIndex+1, t.Name), selector.ColorSelected)
-			},
-			UnSelectedFunc: func(m selector.Model, obj interface{}, gdIndex int) string {
-				t := obj.(GitBranch)
-				return common.FontColor(fmt.Sprintf(" %d. %s", gdIndex+1, t.Name), selector.ColorUnSelected)
-			},
-			FinishedFunc: func(s interface{}) string {
-				return s.(GitBranch).Name + "\n"
-			},
-			FooterFunc: func(m selector.Model, obj interface{}, gdIndex int) string {
-				t := m.Selected().(GitBranch)
-				return common.FontColor(fmt.Sprint(t.Name), selector.ColorFooter)
-			},
-		},
+		insertMode:     false,
+		unfilteredData: data.branches,
+		ti:             ti,
+		sl:             newSelector(generic),
 	}
 	p := tea.NewProgram(m)
 	err = p.Start()
