@@ -17,6 +17,8 @@ import (
 
 type model struct {
 	curr           GitBranch
+	cd             textinput.Model
+	cdMode         bool
 	insertMode     bool
 	unfilteredData []GitBranch
 	ti             textinput.Model
@@ -53,11 +55,6 @@ func tlog(str string) {
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// By default, the prompt component will not return a "tea.Quit"
-	// message unless Ctrl+C is pressed.
-	//
-	// If there is no error in the input, the prompt component returns
-	// a "common.DONE" message when the Enter key is pressed.
 	switch msg {
 	case common.DONE:
 		return m, tea.Quit
@@ -66,14 +63,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.insertMode {
 		return m.handleInsertMode(msg)
 	}
-	tlog("in Update")
+	if m.cdMode {
+		//do something
+		return m.deleteBranch(msg)
+	}
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch strings.ToLower(msg.String()) {
 		case "q":
 			return m, nil
 		case "i":
-			tlog("pressed i")
 			m.insertMode = true
 			m.ti.Focus()
 			return m, nil
@@ -81,6 +80,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fm := fakeKeyMsg(tea.KeyDown, 'j')
 			_, cmd := m.sl.Update(fm)
 			return m, cmd
+		case "x":
+			m.cdMode = true
+			m.cd.Focus()
+			m.cd.Reset()
 		case "k":
 			fm := fakeKeyMsg(tea.KeyUp, 'k')
 			_, cmd := m.sl.Update(fm)
@@ -91,6 +94,30 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m *model) deleteBranch(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// confirm
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch strings.ToLower(msg.String()) {
+		case tea.KeyEnter.String():
+			if m.cd.Value() == "yes" {
+				// handle confirm
+				tlog("CONFIRMED, not implemented yet")
+				return m, nil
+			} else {
+				return m, nil
+			}
+		case "ctrl+c":
+			return m, tea.Quit
+		default:
+			cd, cmd := m.cd.Update(msg)
+			m.cd = cd
+			return m, cmd
+		}
+	}
+	return m, nil
+}
+
 func (m *model) updateData() selector.Model {
 	// make a new slice of strings
 	data := make([]interface{}, 0)
@@ -98,7 +125,6 @@ func (m *model) updateData() selector.Model {
 	for _, branch := range m.unfilteredData {
 		if fuzzy.Match(m.ti.Value(), branch.Name) {
 			data = append(data, branch)
-			tlog(fmt.Sprintf("it's a match! %s - %s", m.ti.Value(), branch.Name))
 		}
 	}
 	// set selector data to new slice.
@@ -121,7 +147,6 @@ func (m *model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.insertMode = false
 			return m, tea.Quit
 		default:
-
 			ti, cmd := m.ti.Update(msg)
 			m.ti = ti
 			sl := m.updateData()
@@ -135,10 +160,16 @@ func (m *model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf(" on branch %s \n", m.curr.Name))
-	b.WriteString(m.ti.View())
-	b.WriteString("\n")
-	b.WriteString(m.sl.View())
+	if m.cd.Focused() {
+		b.WriteString(fmt.Sprintf("delete branch '%s'? \n", m.curr.Name))
+		b.WriteString(m.cd.View())
+	} else {
+
+		b.WriteString(fmt.Sprintf(" on branch %s \n", m.curr.Name))
+		b.WriteString(m.ti.View())
+		b.WriteString("\n")
+		b.WriteString(m.sl.View())
+	}
 	return b.String()
 }
 
@@ -190,9 +221,12 @@ func main() {
 		generic = append(generic, v)
 	}
 	ti := textinput.New()
+	cd := textinput.New()
 	m := &model{
 		curr:           data.current,
 		insertMode:     false,
+		cd:             cd,
+		cdMode:         false,
 		unfilteredData: data.branches,
 		ti:             ti,
 		sl:             newSelector(generic),
