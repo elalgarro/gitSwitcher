@@ -7,7 +7,7 @@
 Then, you can add an alias to this binary file in your `.bashrc` or `.zshrc` file.
 
 ```bash
-alias gitme="path/to/gitSwitcher"
+alias gitme="path/to/gitSwitcher/binary"
 ```
 
 Once this is added, navigate to a git repository and try it out
