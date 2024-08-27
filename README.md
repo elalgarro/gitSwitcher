@@ -1,3 +1,7 @@
+# Git Switcher
+
+A simple command line tool to switch between git branches, written in Go. It is leveraging the [bubbletea](https://github.com/charmbracelet/bubbletea) library to create a TUI.
+
 ### To try out the project
 
 - clone this repo
