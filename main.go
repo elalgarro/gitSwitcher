@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -38,7 +39,7 @@ func fakeKeyMsg(kt tea.KeyType, r rune) tea.KeyMsg {
 	}
 }
 
-const shouldlog = false
+const shouldlog = true
 
 func tlog(str string) {
 	if !shouldlog {
@@ -68,6 +69,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.deleteBranch(msg)
 	}
 	switch msg := msg.(type) {
+	case GitAction:
+		tlog("deleted branch")
+		tlog(msg.stderr)
+		tlog(msg.stdout)
+		return m, nil
 	case tea.KeyMsg:
 		switch strings.ToLower(msg.String()) {
 		case "q":
@@ -100,15 +106,22 @@ func (m *model) deleteBranch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch strings.ToLower(msg.String()) {
 		case tea.KeyEnter.String():
+			var cmd tea.Cmd
 			if m.cd.Value() == "yes" {
 				// handle confirm
-				tlog("CONFIRMED, not implemented yet")
-				return m, nil
-			} else {
-				return m, nil
+				cmd = deleteBranch(m)
 			}
-		case "ctrl+c":
+			m.cd.SetValue("")
+			m.cd.Blur()
+			m.cdMode = false
+			return m, cmd
+		case tea.KeyCtrlC.String():
 			return m, tea.Quit
+		case tea.KeyEscape.String():
+			m.cd.SetValue("")
+			m.cd.Blur()
+			m.cdMode = false
+			return m, nil
 		default:
 			cd, cmd := m.cd.Update(msg)
 			m.cd = cd
@@ -132,6 +145,25 @@ func (m *model) updateData() selector.Model {
 	return newSelector(data)
 }
 
+type GitAction struct {
+	stdout string
+	stderr string
+	err    error
+}
+
+func deleteBranch(m *model) tea.Cmd {
+	branch := m.sl.Selected().(GitBranch)
+	cmd := exec.Command("git", "branch", "-d", branch.Name)
+	return func() tea.Msg {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		return GitAction{err: err, stdout: stdout.String(), stderr: stderr.String()}
+	}
+}
+
 func (m *model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -139,11 +171,11 @@ func (m *model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter", "down", "up":
 			_, cmd := m.sl.Update(msg)
 			return m, cmd
-		case "esc":
+		case tea.KeyEsc.String():
 			m.insertMode = false
 			m.ti.Blur()
 			return m, nil
-		case "ctrl+c":
+		case tea.KeyCtrlC.String():
 			m.insertMode = false
 			return m, tea.Quit
 		default:
@@ -236,7 +268,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if !m.sl.Canceled() {
+	if !m.sl.Canceled() && false {
 		branch := m.sl.Selected().(GitBranch)
 		exec.Command("git", "stash").Run()
 		cmd := exec.Command("git", "switch", branch.Name)
