@@ -177,6 +177,7 @@ func deleteBranch(m *model, force bool) tea.Cmd {
 	if force {
 		casing = "-D"
 	}
+	tlog(fmt.Sprintf("deleting branch with %s", casing))
 	cmd := exec.Command("git", "branch", casing, branch.Name)
 	return func() tea.Msg {
 		var stdout bytes.Buffer
@@ -292,7 +293,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if !m.sl.Canceled() && false {
+	if !m.sl.Canceled() {
 		branch := m.sl.Selected().(GitBranch)
 		exec.Command("git", "stash").Run()
 		cmd := exec.Command("git", "switch", branch.Name)
