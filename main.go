@@ -108,12 +108,11 @@ func (m *model) handleGitAction(msg GitAction) (tea.Model, tea.Cmd) {
 			panic(msg.stderr)
 		}
 	} else {
-		return m.refreshGitState(msg)
+		return m.refreshGitState()
 	}
-	return m, nil
 }
 
-func (m *model) refreshGitState(msg GitAction) (tea.Model, tea.Cmd) {
+func (m *model) refreshGitState() (tea.Model, tea.Cmd) {
 	cmd := func() tea.Msg {
 		newOpts, newList, err := makeBranchState()
 		if err != nil {
