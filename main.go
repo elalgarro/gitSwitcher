@@ -99,13 +99,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) handleGitAction(msg GitAction) (tea.Model, tea.Cmd) {
 	if msg.stderr != "" {
-		tlog(fmt.Sprintf("stderr: %s", msg.stderr))
-		tlog(fmt.Sprintf("stdout: %s", msg.stdout))
 		if strings.Contains(msg.stderr, "git branch -D") {
 			m.cd.Focus()
 			return m, nil
 		} else {
-			panic(msg.stderr)
+			tlog(fmt.Sprintf("stderr: %s", msg.stderr))
+			tlog(fmt.Sprintf("stdout: %s", msg.stdout))
+			if strings.Contains(msg.stderr, "warning:") {
+				return m.refreshGitState()
+			}
+			return m, nil
 		}
 	} else {
 		return m.refreshGitState()
