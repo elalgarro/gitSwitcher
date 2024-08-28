@@ -65,7 +65,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.insertMode {
 		return m.handleInsertMode(msg)
 	}
-	if m.cdMode {
+	if m.cd.Focused() {
 		//do something
 		return m.deleteBranch(msg)
 	}
@@ -99,8 +99,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) handleGitAction(msg GitAction) (tea.Model, tea.Cmd) {
 	if msg.stderr != "" {
-		tlog(msg.stderr)
-		tlog(msg.stdout)
+		tlog(fmt.Sprintf("stderr: %s", msg.stderr))
+		tlog(fmt.Sprintf("stdout: %s", msg.stdout))
+		if strings.Contains(msg.stderr, "git branch -D") {
+			m.cd.Focus()
+			return m, nil
+		} else {
+			panic(msg.stderr)
+		}
 	} else {
 		return m.refreshGitState(msg)
 	}
@@ -120,6 +126,11 @@ func (m *model) refreshGitState(msg GitAction) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func isYes(str string) bool {
+	return strings.ToLower(str) == "yes" ||
+		strings.ToLower(str) == "y"
+}
+
 func (m *model) deleteBranch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// confirm
 	switch msg := msg.(type) {
@@ -127,7 +138,7 @@ func (m *model) deleteBranch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch strings.ToLower(msg.String()) {
 		case tea.KeyEnter.String():
 			var cmd tea.Cmd
-			if m.cd.Value() == "yes" {
+			if isYes(m.cd.Value()) {
 				// handle confirm
 				cmd = deleteBranch(m, true)
 			}
@@ -218,7 +229,7 @@ func (m *model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	var b strings.Builder
 	if m.cd.Focused() {
-		b.WriteString(fmt.Sprintf("delete branch '%s'? \n", m.sl.Selected()))
+		b.WriteString("Brach %s is not fully merged,\nare you sure you want to delete? (y/n)")
 		b.WriteString(m.cd.View())
 	} else {
 
