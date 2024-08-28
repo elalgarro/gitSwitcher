@@ -16,6 +16,7 @@ import (
 	"github.com/mritd/bubbles/selector"
 )
 
+type any = interface{}
 type model struct {
 	curr           GitBranch
 	cd             textinput.Model
@@ -70,10 +71,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch msg := msg.(type) {
 	case GitAction:
-		tlog("deleted branch")
-		tlog(msg.stderr)
-		tlog(msg.stdout)
-		return m, nil
+		return m.refreshGitState(msg)
 	case tea.KeyMsg:
 		switch strings.ToLower(msg.String()) {
 		case "q":
@@ -97,6 +95,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	_, cmd := m.sl.Update(msg)
+	return m, cmd
+}
+func (m *model) refreshGitState(msg GitAction) (tea.Model, tea.Cmd) {
+	cmd := func() tea.Msg {
+		newOpts, newList, err := makeBranchState()
+		if err != nil {
+			return err
+		}
+		m.sl = newSelector(newOpts)
+		m.unfilteredData = newList.branches
+		return "refreshed git state"
+	}
 	return m, cmd
 }
 
@@ -133,7 +143,7 @@ func (m *model) deleteBranch(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) updateData() selector.Model {
 	// make a new slice of strings
-	data := make([]interface{}, 0)
+	data := make([]any, 0)
 	// filter the git branches based on filter
 	for _, branch := range m.unfilteredData {
 		if fuzzy.Match(m.ti.Value(), branch.Name) {
@@ -214,23 +224,23 @@ func sanityCheck() (inRepo bool) {
 	//above command errors if we are not in a git repo.
 	return err == nil
 }
-func newSelector(data []interface{}) selector.Model {
+func newSelector(data []any) selector.Model {
 	return selector.Model{
 		Data: data,
 		// PerPage:    5,
-		HeaderFunc: func(m selector.Model, obj interface{}, gdIndex int) string { return "" },
-		SelectedFunc: func(m selector.Model, obj interface{}, gdIndex int) string {
+		HeaderFunc: func(m selector.Model, obj any, gdIndex int) string { return "" },
+		SelectedFunc: func(m selector.Model, obj any, gdIndex int) string {
 			t := obj.(GitBranch)
 			return common.FontColor(fmt.Sprintf("[%d] %s", gdIndex+1, t.Name), selector.ColorSelected)
 		},
-		UnSelectedFunc: func(m selector.Model, obj interface{}, gdIndex int) string {
+		UnSelectedFunc: func(m selector.Model, obj any, gdIndex int) string {
 			t := obj.(GitBranch)
 			return common.FontColor(fmt.Sprintf(" %d. %s", gdIndex+1, t.Name), selector.ColorUnSelected)
 		},
-		FinishedFunc: func(s interface{}) string {
+		FinishedFunc: func(s any) string {
 			return s.(GitBranch).Name + "\n"
 		},
-		FooterFunc: func(m selector.Model, obj interface{}, gdIndex int) string {
+		FooterFunc: func(m selector.Model, obj any, gdIndex int) string {
 			t := m.Selected().(GitBranch)
 			return common.FontColor(fmt.Sprint(t.Name), selector.ColorFooter)
 		}}
@@ -248,7 +258,7 @@ func main() {
 		os.Exit(1)
 	}
 	data := buildBranchData(branches)
-	generic := make([]interface{}, 0)
+	generic := make([]any, 0)
 	for _, v := range data.branches {
 		generic = append(generic, v)
 	}
@@ -318,4 +328,17 @@ func buildBranchData(_branches []string) BranchData {
 	data := BranchData{current: current, branches: branches}
 
 	return data
+}
+
+func makeBranchState() ([]any, BranchData, error) {
+	branches, err := gatherBranches()
+	generic := make([]any, 0)
+	if err != nil {
+		return generic, BranchData{}, err
+	}
+	data := buildBranchData(branches)
+	for _, v := range data.branches {
+		generic = append(generic, v)
+	}
+	return generic, data, nil
 }
