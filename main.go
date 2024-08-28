@@ -71,7 +71,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch msg := msg.(type) {
 	case GitAction:
-		return m.refreshGitState(msg)
+		return m.handleGitAction(msg)
 	case tea.KeyMsg:
 		switch strings.ToLower(msg.String()) {
 		case "q":
@@ -85,9 +85,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			_, cmd := m.sl.Update(fm)
 			return m, cmd
 		case "x":
-			m.cdMode = true
-			m.cd.Focus()
-			m.cd.Reset()
+			cmd := deleteBranch(m, false)
+			return m, cmd
 		case "k":
 			fm := fakeKeyMsg(tea.KeyUp, 'k')
 			_, cmd := m.sl.Update(fm)
@@ -97,6 +96,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cmd := m.sl.Update(msg)
 	return m, cmd
 }
+
+func (m *model) handleGitAction(msg GitAction) (tea.Model, tea.Cmd) {
+	if msg.stderr != "" {
+		tlog(msg.stderr)
+		tlog(msg.stdout)
+	} else {
+		return m.refreshGitState(msg)
+	}
+	return m, nil
+}
+
 func (m *model) refreshGitState(msg GitAction) (tea.Model, tea.Cmd) {
 	cmd := func() tea.Msg {
 		newOpts, newList, err := makeBranchState()
@@ -119,7 +129,7 @@ func (m *model) deleteBranch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			if m.cd.Value() == "yes" {
 				// handle confirm
-				cmd = deleteBranch(m)
+				cmd = deleteBranch(m, true)
 			}
 			m.cd.SetValue("")
 			m.cd.Blur()
@@ -161,9 +171,13 @@ type GitAction struct {
 	err    error
 }
 
-func deleteBranch(m *model) tea.Cmd {
+func deleteBranch(m *model, force bool) tea.Cmd {
 	branch := m.sl.Selected().(GitBranch)
-	cmd := exec.Command("git", "branch", "-d", branch.Name)
+	casing := "-d"
+	if force {
+		casing = "-D"
+	}
+	cmd := exec.Command("git", "branch", casing, branch.Name)
 	return func() tea.Msg {
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
@@ -203,7 +217,7 @@ func (m *model) handleInsertMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	var b strings.Builder
 	if m.cd.Focused() {
-		b.WriteString(fmt.Sprintf("delete branch '%s'? \n", m.curr.Name))
+		b.WriteString(fmt.Sprintf("delete branch '%s'? \n", m.sl.Selected()))
 		b.WriteString(m.cd.View())
 	} else {
 
