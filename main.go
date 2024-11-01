@@ -280,42 +280,46 @@ func main() {
 		os.Exit(1)
 		return
 	}
-	branches, err := gatherBranches()
-	if err != nil {
-		os.Stderr.Write([]byte(err.Error()))
-		os.Exit(1)
-	}
-	data := buildBranchData(branches)
-	generic := make([]any, 0)
-	for _, v := range data.branches {
-		generic = append(generic, v)
-	}
-	ti := textinput.New()
-	cd := textinput.New()
-	m := &model{
-		curr:           data.current,
-		insertMode:     false,
-		cd:             cd,
-		cdMode:         false,
-		unfilteredData: data.branches,
-		ti:             ti,
-		sl:             newSelector(generic),
-	}
-	p := tea.NewProgram(m)
-	err = p.Start()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if !m.sl.Canceled() {
-		branch := m.sl.Selected().(GitBranch)
-		exec.Command("git", "stash").Run()
-		cmd := exec.Command("git", "switch", branch.Name)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		cmd.Run()
-		return
+	if len(os.Args) > 1 {
+		stash()
 	} else {
-		log.Println("user canceled...")
+		branches, err := gatherBranches()
+		if err != nil {
+			os.Stderr.Write([]byte(err.Error()))
+			os.Exit(1)
+		}
+		data := buildBranchData(branches)
+		generic := make([]any, 0)
+		for _, v := range data.branches {
+			generic = append(generic, v)
+		}
+		ti := textinput.New()
+		cd := textinput.New()
+		m := &model{
+			curr:           data.current,
+			insertMode:     false,
+			cd:             cd,
+			cdMode:         false,
+			unfilteredData: data.branches,
+			ti:             ti,
+			sl:             newSelector(generic),
+		}
+		p := tea.NewProgram(m)
+		err = p.Start()
+		if err != nil {
+			log.Fatal(err)
+		}
+		if !m.sl.Canceled() {
+			branch := m.sl.Selected().(GitBranch)
+			exec.Command("git", "stash").Run()
+			cmd := exec.Command("git", "switch", branch.Name)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Run()
+			return
+		} else {
+			log.Println("user canceled...")
+		}
 	}
 }
 
