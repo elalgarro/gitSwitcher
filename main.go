@@ -280,7 +280,7 @@ func main() {
 		os.Exit(1)
 		return
 	}
-	if len(os.Args) > 1 {
+	if len(os.Args) > 1 && os.Args[1] == "stash" {
 		stash()
 	} else {
 		branches, err := gatherBranches()

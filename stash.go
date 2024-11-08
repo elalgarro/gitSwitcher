@@ -12,15 +12,16 @@ import (
 )
 
 type stashUi struct {
+	canceled      bool
 	changes       []string
 	stagedChanges []string
 	sl            selector.Model
 }
 
-func (m stashUi) Init() tea.Cmd {
+func (m *stashUi) Init() tea.Cmd {
 	return nil
 }
-func (m stashUi) View() string {
+func (m *stashUi) View() string {
 	var builder strings.Builder
 
 	builder.WriteString(m.sl.View())
@@ -33,7 +34,7 @@ func (m stashUi) View() string {
 	return builder.String()
 }
 
-func (m stashUi) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *stashUi) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if msg == common.DONE {
 		return m, tea.Quit
 	}
@@ -41,6 +42,7 @@ func (m stashUi) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch strings.ToLower(msg.String()) {
 		case "ctrl+c", "q":
+			m.canceled = true
 			return m, tea.Quit
 		case "s":
 			return m.stageChange(msg)
@@ -52,7 +54,7 @@ func (m stashUi) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m stashUi) undoStage(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *stashUi) undoStage(msg tea.Msg) (tea.Model, tea.Cmd) {
 	newChanges := make([]string, len(m.changes))
 	copy(newChanges, m.changes)
 	newStaged := make([]string, 0)
@@ -75,7 +77,7 @@ func (m stashUi) undoStage(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m stashUi) stageChange(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *stashUi) stageChange(msg tea.Msg) (tea.Model, tea.Cmd) {
 	idx := m.sl.Index()
 	newChanges := make([]string, 0)
 	newStaged := make([]string, len(m.stagedChanges))
@@ -138,6 +140,25 @@ func fetchChanges() []string {
 	}
 	return newArr
 }
+func applyGitStash(m *stashUi) {
+	if len(m.stagedChanges) < 1 {
+		os.Stdout.WriteString("No changes selected")
+		os.Exit(0)
+	}
+	args := make([]string, 0)
+	args = append(args, "stash")
+	args = append(args, "push")
+	args = append(args, "-a")
+	args = append(args, m.stagedChanges...)
+
+	err := exec.Command("git", args...).Run()
+	if err != nil {
+		os.Stderr.WriteString(err.Error())
+		os.Exit(1)
+	}
+	os.Stdout.WriteString("changes stashed!")
+	os.Exit(0)
+}
 
 func initProgram() tea.Model {
 	stashed := fetchChanges()
@@ -146,7 +167,8 @@ func initProgram() tea.Model {
 	for _, v := range stashed {
 		sldata = append(sldata, v)
 	}
-	return stashUi{
+	return &stashUi{
+		canceled:      false,
 		changes:       stashed,
 		stagedChanges: staged,
 		sl:            makeSelector(sldata),
@@ -154,6 +176,13 @@ func initProgram() tea.Model {
 }
 
 func stash() {
-	program := tea.NewProgram(initProgram())
+	model := initProgram()
+	program := tea.NewProgram(model)
 	program.Run()
+	if !model.(*stashUi).canceled {
+		applyGitStash(model.(*stashUi))
+	} else {
+		os.Stdout.WriteString("user canceled")
+		os.Exit(0)
+	}
 }
